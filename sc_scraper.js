@@ -1,35 +1,50 @@
 const puppeteer = require('puppeteer');
 
-const videoUrl = 'https://www.youtube.com/watch?v=kOZWQgtqps4'; // replace with your youtube video link
+const videoUrl = 'https://www.youtube.com/watch?v=kOZWQgtqps4'; // Replace with your video link
 
 (async () => {
   console.log('Launching browser...');
-  const browser = await puppeteer.launch({ headless: false });
+  const browser = await puppeteer.launch({ headless: false, args: ['--window-size=1920,1080'] });
   const page = await browser.newPage();
+
+  // Also set the viewport to match the window size
+  await page.setViewport({ width: 1920, height: 1080 });
 
   console.log(`Opening video: ${videoUrl}`);
   await page.goto(videoUrl, { waitUntil: 'networkidle2' });
 
   console.log('Scrolling to load all comments...');
-  let previousHeight;
+  
+  let previousHeight = 0;
   let scrollCount = 0;
-  while (true) {
+  let unchangedScrollCount = 0;
+  const maxUnchangedScrolls = 3; // Try up to 3 times even if height is unchanged
+
+  while (unchangedScrollCount < maxUnchangedScrolls) {
     previousHeight = await page.evaluate('document.documentElement.scrollHeight');
+    
     await page.evaluate('window.scrollTo(0, document.documentElement.scrollHeight)');
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Small delay to allow loading
+
     let newHeight = await page.evaluate('document.documentElement.scrollHeight');
     scrollCount++;
+
     console.log(`Scroll attempt #${scrollCount} - Height: ${newHeight}`);
 
-    if (newHeight === previousHeight) break;
+    if (newHeight === previousHeight) {
+      // If height is unchanged, wait a bit and try again
+      console.log(`No new content. Waiting... (${unchangedScrollCount + 1}/${maxUnchangedScrolls})`);
+      unchangedScrollCount++;
+      await new Promise(resolve => setTimeout(resolve, 1500)); // Wait longer to allow more loading
+    } else {
+      unchangedScrollCount = 0; // Reset counter if height changes
+    }
   }
 
   console.log('Finished scrolling. Extracting Super Thanks data...');
   const amounts = await page.evaluate(() => {
     const elements = Array.from(document.querySelectorAll('span#comment-chip-price'));
-    return elements
-      .map(el => el.textContent?.trim())
-      .filter(Boolean);
+    return elements.map(el => el.textContent?.trim()).filter(Boolean);
   });
 
   let totalAmountByCurrency = {};
@@ -37,7 +52,6 @@ const videoUrl = 'https://www.youtube.com/watch?v=kOZWQgtqps4'; // replace with 
 
   console.log(`Found ${superThanksCount} Super Thanks entries.`);
   amounts.forEach((amount, index) => {
-    // Capture currency symbol and value
     const match = amount.match(/([^\d.,]+)?([\d.,]+)/);
     if (match) {
       const currency = match[1]?.trim() || 'UNKNOWN';
