@@ -1,6 +1,6 @@
 const puppeteer = require('puppeteer');
 
-const videoUrl = 'https://www.youtube.com/watch?v=kOZWQgtqps4';
+const videoUrl = 'https://www.youtube.com/watch?v=kOZWQgtqps4'; // replace with your youtube video link
 
 (async () => {
   console.log('Launching browser...');
